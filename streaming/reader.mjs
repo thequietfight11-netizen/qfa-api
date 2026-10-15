@@ -18,6 +18,7 @@ export async function readQStream(response, {
   let buffer = '';
   let reply = '';
   let finished = false;
+  let succeeded = false;
 
   const readFrame = (frame) => {
     const data = frame.split(/\r?\n/)
@@ -33,6 +34,7 @@ export async function readQStream(response, {
       onDelta(event.text, reply);
     } else if (event.type === 'done') {
       finished = true;
+      succeeded = true;
       onDone(reply);
     } else if (event.type === 'error') {
       finished = true;
@@ -56,7 +58,7 @@ export async function readQStream(response, {
       if (buffer.length > 65536) throw new Error('Oversized event');
     }
     if (!finished) onError('Q stopped before finishing. Please try again.');
-    return finished;
+    return succeeded;
   } catch {
     onError(signal?.aborted ? 'Q was cancelled.' : 'Q lost the connection. Please try again.');
     return false;
