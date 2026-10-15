@@ -86,6 +86,38 @@ export async function signStreamingTicket(payload, secret) {
   return raw + '.' + bytesToBase64Url(new Uint8Array(signature));
 }
 
+// The journey context is confidential. An HMAC alone authenticates a payload
+// but does not encrypt it. Encrypt the summary before putting it in the ticket.
+async function contextKey(secret) {
+  const raw = await crypto.subtle.digest(
+    'SHA-256', new TextEncoder().encode('q-stream-context-v1:' + secret)
+  );
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+export async function encryptPrivateContext(summary, secret) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, await contextKey(secret), new TextEncoder().encode(summary)
+  );
+  return bytesToBase64Url(iv) + '.' + bytesToBase64Url(new Uint8Array(cipher));
+}
+
+async function decryptPrivateContext(encrypted, secret) {
+  if (typeof encrypted !== 'string' || encrypted.length > 4000) throw new Error('Bad context');
+  const parts = encrypted.split('.');
+  if (parts.length !== 2) throw new Error('Bad context');
+  const iv = base64UrlToBytes(parts[0]);
+  if (iv.length !== 12) throw new Error('Bad nonce');
+  const cipher = base64UrlToBytes(parts[1]);
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv }, await contextKey(secret), cipher
+  );
+  const summary = new TextDecoder().decode(plain);
+  if (summary.length > 1800) throw new Error('Context too long');
+  return summary;
+}
+
 async function verifyTicket(ticket, secret, digest, nowSeconds = Math.floor(Date.now() / 1000)) {
   if (!ticket || ticket.length > 4096) return null;
   const parts = ticket.split('.');
@@ -102,9 +134,11 @@ async function verifyTicket(ticket, secret, digest, nowSeconds = Math.floor(Date
       typeof payload.jti !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(payload.jti) ||
       typeof payload.exp !== 'number' || payload.exp <= nowSeconds || payload.exp > nowSeconds + 90 ||
       payload.bodyHash !== digest ||
-      typeof payload.summary !== 'string' || payload.summary.length > 1800
+      typeof payload.context !== 'string' || payload.context.length > 4000
     ) return null;
-    return payload;
+    // Only the worker, which knows the shared secret, can see journey context.
+    const summary = await decryptPrivateContext(payload.context, secret);
+    return { ...payload, summary };
   } catch {
     return null;
   }
