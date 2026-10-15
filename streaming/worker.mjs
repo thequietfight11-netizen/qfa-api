@@ -149,8 +149,8 @@ export function streamingResponse(upstream, origin) {
           completed = true;
           emit({ type: 'done' });
         } else if (event.type === 'response.failed' || event.type === 'error') {
-          ended = true;
           emit({ type: 'error', message: 'Q could not finish just now. Please try again.' });
+          ended = true;
         }
       }
 
