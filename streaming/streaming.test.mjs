@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   handleStreamingRequest, streamingResponse, requestDigest,
-  signStreamingTicket, QStreamBudget,
+  signStreamingTicket, encryptPrivateContext, QStreamBudget,
 } from './worker.mjs';
 import { readQStream } from './reader.mjs';
 
@@ -63,12 +63,20 @@ test('missing streaming configuration fails closed before calling paid provider'
 
 test('only a signed short-lived ticket for the exact message unlocks streaming', async () => {
   const normalizedBody = { message: 'I miss my children', history: [] };
+  const privateSummary = 'Separated dad, minimal contact. Do not assume regular handovers.';
+  const encryptedContext = await encryptPrivateContext(
+    privateSummary, 'local-test-secret-not-for-production'
+  );
   const ticket = await signStreamingTicket({
     aud: 'q-stream-poc-v1', sub: 'sample-user', jti: 'test_session_12345',
     exp: Math.floor(Date.now() / 1000) + 45,
     bodyHash: await requestDigest(normalizedBody),
-    summary: 'Separated dad, minimal contact. Do not assume regular handovers.',
+    context: encryptedContext,
   }, 'local-test-secret-not-for-production');
+  // The signed ticket contains no readable journal or journey information.
+  assert.equal(ticket.includes(privateSummary), false);
+  const encoded = ticket.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');
+  assert.equal(atob(encoded).includes(privateSummary), false);
   const env = {
     STREAMING_ENABLED: 'true',
     STREAM_MODEL: 'configured-model-under-test',
