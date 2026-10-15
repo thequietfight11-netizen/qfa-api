@@ -1,0 +1,19 @@
+{
+  "name": "qfa-streaming-preview",
+  "main": "streaming/worker.mjs",
+  "compatibility_date": "2026-10-15",
+  "durable_objects": {
+    "bindings": [
+      { "name": "Q_STREAM_BUDGET", "class_name": "QStreamBudget" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["QStreamBudget"] }
+  ],
+  "vars": {
+    "STREAMING_ENABLED": "false",
+    "STREAM_MODEL": "gpt-5.5",
+    "MONTHLY_BUDGET_PENCE": "500",
+    "UPPER_BOUND_RESERVATION_PENCE": "50"
+  }
+}

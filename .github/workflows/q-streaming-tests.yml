@@ -1,0 +1,25 @@
+name: Q streaming prototype tests
+
+on:
+  push:
+    branches:
+      - feature/q-live-streaming-poc
+  pull_request:
+    paths:
+      - 'streaming/**'
+      - 'wrangler.stream.jsonc'
+      - '.github/workflows/q-streaming-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test-streaming:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test token streaming, authentication and spend guard
+        run: node --test streaming/streaming.test.mjs
