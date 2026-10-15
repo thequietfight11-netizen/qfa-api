@@ -233,3 +233,48 @@ test('Q discards a cancelled request rather than starting a second response', as
   });
   assert.equal(result.mode, 'cancelled');
 });
+
+test('signed streaming ticket accepts subsequent turns and preserves exact conversation', async () => {
+  const secret = 'local-test-secret-not-for-production';
+  const body = {
+    message: 'Can I tell you what happened next?',
+    history: [
+      { role: 'user', text: 'I miss my kids.' },
+      { role: 'assistant', text: 'It sounds especially hard today.' },
+    ],
+  };
+  const context = await encryptPrivateContext('Shared-care arrangement.', secret);
+  const token = await signStreamingTicket({
+    aud: 'q-stream-poc-v1', sub: 'sample-user', jti: 'continued_chat_ticket_123',
+    exp: Math.floor(Date.now() / 1000) + 60,
+    bodyHash: await requestDigest(body),
+    context,
+  }, secret);
+  let upstreamInput = [];
+  const env = {
+    STREAMING_ENABLED: 'true',
+    STREAM_MODEL: 'quality-test-model',
+    OPENAI_API_KEY: 'never-a-real-key',
+    STREAM_TICKET_SECRET: secret,
+    Q_STREAM_BUDGET: {
+      idFromName: () => 'guard',
+      get: () => ({ fetch: async () => new Response('', { status: 200 }) }),
+    },
+  };
+  const request = new Request('https://preview.example/chat/stream', {
+    method: 'POST',
+    headers: { Origin: ORIGIN, Authorization: 'Bearer ' + token },
+    body: JSON.stringify(body),
+  });
+  const response = await handleStreamingRequest(request, env, async (_url, options) => {
+    upstreamInput = JSON.parse(options.body).input;
+    return provider(DELTA_A, DONE);
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(upstreamInput, [
+    { role: 'user', content: 'I miss my kids.' },
+    { role: 'assistant', content: 'It sounds especially hard today.' },
+    { role: 'user', content: 'Can I tell you what happened next?' },
+  ]);
+  assert.ok((await response.text()).includes('done'));
+});
