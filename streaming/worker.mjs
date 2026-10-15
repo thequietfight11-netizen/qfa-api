@@ -277,7 +277,7 @@ export async function handleStreamingRequest(request, env, fetchImpl = fetch) {
   if (
     env.STREAMING_ENABLED !== 'true' ||
     !env.OPENAI_API_KEY || !env.STREAM_TICKET_SECRET ||
-    !env.STREAM_MODEL || !env.Q_STREAM_BUDGET
+    env.STREAM_MODEL !== 'gpt-5.5' || !env.Q_STREAM_BUDGET
   ) return jsonResponse({ error: 'Preview streaming is not enabled' }, 503, origin);
 
   const raw = await request.text();
@@ -310,7 +310,7 @@ export async function handleStreamingRequest(request, env, fetchImpl = fetch) {
       signal: request.signal,
       headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: env.STREAM_MODEL, // Explicit: no silent model downgrade.
+        model: env.STREAM_MODEL, // Quality-first pilot: allow only the cost-assessed model.
         instructions: INSTRUCTIONS + '\nPrivate journey context: ' + payload.summary,
         input: [
           ...body.history.map(x => ({ role: x.role, content: x.text })),
