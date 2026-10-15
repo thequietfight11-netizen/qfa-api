@@ -278,3 +278,39 @@ test('signed streaming ticket accepts subsequent turns and preserves exact conve
   ]);
   assert.ok((await response.text()).includes('done'));
 });
+
+test('Q never auto-retries after AI stream fetch returns an error status', async () => {
+  let providerCalls = 0;
+  const interruptions = [];
+  const result = await tryStreamQReply({
+    message: 'I need somewhere to talk',
+    streamUrl: 'https://preview.example/chat/stream',
+    issueTicket: async () => ({ ticket: 'valid-ticket' }),
+    fetchImpl: async () => {
+      providerCalls++;
+      return new Response('upstream failed', { status: 502 });
+    },
+    onInterrupted: msg => interruptions.push(msg),
+  });
+  assert.equal(result.mode, 'interrupted');
+  assert.equal(providerCalls, 1);
+  assert.equal(interruptions.length, 1);
+});
+
+test('Q never auto-retries after stream connects but closes before first token', async () => {
+  let providerCalls = 0;
+  const interruptions = [];
+  const result = await tryStreamQReply({
+    message: 'I am feeling alone today',
+    streamUrl: 'https://preview.example/chat/stream',
+    issueTicket: async () => ({ ticket: 'valid-ticket' }),
+    fetchImpl: async () => {
+      providerCalls++;
+      return streamingResponse(provider('data: {"type":"response.created"}\n\n'), ORIGIN);
+    },
+    onInterrupted: msg => interruptions.push(msg),
+  });
+  assert.equal(result.mode, 'interrupted');
+  assert.equal(providerCalls, 1);
+  assert.equal(interruptions.length, 1);
+});
