@@ -34,6 +34,7 @@ export async function tryStreamQReply({
   let hasStarted = false;
   let finished = false;
   let error = '';
+  let providerRequestStarted = false;
 
   try {
     onStatus('thinking');
@@ -43,6 +44,7 @@ export async function tryStreamQReply({
       return { mode: 'fallback', reason: 'No streaming session' };
     }
 
+    providerRequestStarted = true;
     const response = await fetchImpl(streamUrl, {
       method: 'POST',
       headers: {
@@ -89,6 +91,8 @@ export async function tryStreamQReply({
     return { mode: 'interrupted', text: partialReply, reason: error };
   } catch {
     if (signal?.aborted) return { mode: 'cancelled' };
+    // Only fall back if ticket issuance failed and NO provider request began.
+    if (!providerRequestStarted) return { mode: 'fallback', reason: 'Stream could not start' };
     // Even a network error can arrive after the paid request was accepted.
     if (!hasStarted) {
       onInterrupted('Q lost the connection. Please try again.');
