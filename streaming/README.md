@@ -20,7 +20,7 @@ This prototype forwards **real** `response.output_text.delta` events from the Op
 
 ## Still required before live phone testing
 
-1. Build an AppDeploy `requireAuth()`-protected **ticket issuer** for the active production Q app, signing `aud`, user ID, a random one-use `jti`, 60-second `exp`, `bodyHash` and that dad's **own** journey summary. Store the shared secret in both backends, never in the browser.
+1. **Implemented, but disabled:** the production AppDeploy backend now has a `requireAuth()`-protected `POST /api/q-stream-ticket` issuer. It encrypts each dad’s own journey context and signs the message-bound 60-second ticket. It fails closed because `Q_STREAM_TICKET_SECRET` has **not** been configured; live `/api/q` is unaffected. When ready, provide the same strong secret securely to both services. Never put the secret in source files or the browser.
 2. Choose an actually available OpenAI model that meets Q's current quality bar. The existing AppDeploy AI model has not been mapped to a direct OpenAI model; do **not** promise equivalent replies until a blind quality comparison.
 3. Verify price and configure enforced spending policy before turning on `STREAMING_ENABLED`. Confirm Durable Object and model availability on the target Cloudflare account.
 4. Add the `readQStream` reader to a **separate** app preview, retaining existing AppDeploy `POST /api/q` as a safe fallback; test Chrome, Android TWA, network interruptions, logout and message ordering.
@@ -34,7 +34,7 @@ The suite uses a **mock OpenAI SSE response**, so it generates no paid AI calls.
 
 ## Draft contract
 
-Authenticated issuer creates a base64url HMAC-SHA256 ticket with fields:
+Authenticated issuer creates a base64url HMAC-SHA256 ticket with fields (the private journey context is AES-GCM encrypted before insertion):
 
 ```json
 {
@@ -43,7 +43,7 @@ Authenticated issuer creates a base64url HMAC-SHA256 ticket with fields:
   "jti": "cryptographically-random-unique-ticket",
   "exp": 1770000060,
   "bodyHash": "sha256-base64url-of-normalized-message-history",
-  "summary": "that user's private journey context"
+  "context": "base64url-12-byte-IV.base64url-AES-GCM-ciphertext"
 }
 ```
 
@@ -62,4 +62,4 @@ data: {"type":"done"}
 
 The client appends each `delta` to a text node **as it arrives** (never `innerHTML`), keeps the current thinking bubble until the first text event, and removes it on complete/error.
 
-No authenticated issuer or production client is deployed by this branch.
+The authenticated ticket issuer code is now deployed **dormant** in the existing AppDeploy backend, with no secret configured and no production client using it. No production AI streaming traffic is enabled.
