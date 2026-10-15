@@ -5,6 +5,7 @@ import {
   signStreamingTicket, encryptPrivateContext, QStreamBudget,
 } from './worker.mjs';
 import { readQStream } from './reader.mjs';
+import { tryStreamQReply } from './q-chat-integration.mjs';
 
 const ORIGIN = 'https://the-quiet-fight-production-plwzkx.v2.appdeploy.ai';
 const encoder = new TextEncoder();
@@ -156,4 +157,79 @@ test('frontend reports interrupted answers without pretending they completed', a
   );
   assert.equal(result, false);
   assert.match(errored, /interrupted|stopped/i);
+});
+
+test('Q integration preserves real incremental text and completes once', async () => {
+  let issued = null;
+  let posted = null;
+  const deltas = [];
+  const statuses = [];
+  const completions = [];
+  const result = await tryStreamQReply({
+    message: '  I miss the kids  ',
+    history: [{ role: 'user', text: 'Hello' }],
+    streamUrl: 'https://preview.example/chat/stream',
+    issueTicket: async body => { issued = body; return { ticket: 'session-token' }; },
+    fetchImpl: async (url, req) => {
+      posted = { url, ...req };
+      return streamingResponse(provider(DELTA_A, DELTA_B, DONE), ORIGIN);
+    },
+    onStatus: next => statuses.push(next),
+    onDelta: (piece, full) => deltas.push({ piece, full }),
+    onComplete: answer => completions.push(answer),
+  });
+  assert.equal(result.mode, 'streamed');
+  assert.equal(result.text, 'I hear you.');
+  assert.deepEqual(issued, { message: 'I miss the kids', history: [{ role: 'user', text: 'Hello' }] });
+  assert.equal(posted.headers.Authorization, 'Bearer session-token');
+  assert.equal(JSON.parse(posted.body).message, issued.message);
+  assert.deepEqual(statuses, ['thinking', 'streaming', 'streaming']);
+  assert.equal(completions.length, 1);
+  assert.deepEqual(deltas.map(d => d.full), ['I hear ', 'I hear you.']);
+});
+
+test('Q falls back to existing AI before any streaming text is shown', async () => {
+  let issueCalls = 0;
+  const result = await tryStreamQReply({
+    message: 'Today feels hard',
+    streamUrl: 'https://preview.example/chat/stream',
+    issueTicket: async () => { issueCalls++; throw new Error('Ticket not configured'); },
+  });
+  assert.equal(result.mode, 'fallback');
+  assert.equal(issueCalls, 1);
+  const disabled = await tryStreamQReply({
+    message: 'Today feels hard',
+    issueTicket: async () => { issueCalls++; },
+  });
+  assert.equal(disabled.mode, 'fallback');
+  assert.equal(issueCalls, 1);
+});
+
+test('Q never duplicates an answer or silently switches providers mid-stream', async () => {
+  const texts = [];
+  const interruptions = [];
+  const result = await tryStreamQReply({
+    message: 'Please listen',
+    streamUrl: 'https://preview.example/chat/stream',
+    issueTicket: async () => ({ ticket: 'signed-preview-session' }),
+    fetchImpl: async () => streamingResponse(provider(DELTA_A), ORIGIN),
+    onDelta: (_part, whole) => texts.push(whole),
+    onInterrupted: msg => interruptions.push(msg),
+  });
+  assert.equal(result.mode, 'interrupted');
+  assert.equal(result.text, 'I hear ');
+  assert.equal(texts.length, 1);
+  assert.equal(interruptions.length, 1);
+});
+
+test('Q discards a cancelled request rather than starting a second response', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const result = await tryStreamQReply({
+    message: 'Can we talk?',
+    streamUrl: 'https://preview.example/chat/stream',
+    signal: controller.signal,
+    issueTicket: async () => ({ ticket: 'token' }),
+  });
+  assert.equal(result.mode, 'cancelled');
 });
