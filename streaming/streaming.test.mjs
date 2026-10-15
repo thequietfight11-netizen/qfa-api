@@ -80,7 +80,7 @@ test('only a signed short-lived ticket for the exact message unlocks streaming',
   assert.equal(atob(encoded).includes(privateSummary), false);
   const env = {
     STREAMING_ENABLED: 'true',
-    STREAM_MODEL: 'configured-model-under-test',
+    STREAM_MODEL: 'gpt-5.5',
     OPENAI_API_KEY: 'fake-key-never-sent',
     STREAM_TICKET_SECRET: 'local-test-secret-not-for-production',
     Q_STREAM_BUDGET: {
@@ -104,7 +104,7 @@ test('only a signed short-lived ticket for the exact message unlocks streaming',
   assert.ok(content.includes('"delta"'));
   assert.equal(upstreamPayload.stream, true);
   assert.equal(upstreamPayload.store, false);
-  assert.equal(upstreamPayload.model, 'configured-model-under-test');
+  assert.equal(upstreamPayload.model, 'gpt-5.5');
   assert.match(upstreamPayload.instructions, /Do not assume regular handovers/);
   assert.equal(upstreamPayload.max_output_tokens, 1000);
 
@@ -253,7 +253,7 @@ test('signed streaming ticket accepts subsequent turns and preserves exact conve
   let upstreamInput = [];
   const env = {
     STREAMING_ENABLED: 'true',
-    STREAM_MODEL: 'quality-test-model',
+    STREAM_MODEL: 'gpt-5.5',
     OPENAI_API_KEY: 'never-a-real-key',
     STREAM_TICKET_SECRET: secret,
     Q_STREAM_BUDGET: {
