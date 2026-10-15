@@ -45,7 +45,9 @@ function clampHistory(items) {
   return items.slice(-8).flatMap(item => {
     const role = item?.role;
     const content = typeof item?.text === 'string' ? item.text.trim().slice(0, 3000) : '';
-    return (role === 'user' || role === 'assistant') && content ? [{ role, content }] : [];
+    // Canonical ticket digest must match the authenticated AppDeploy issuer,
+    // which uses { role, text }, not the OpenAI { role, content } shape.
+    return (role === 'user' || role === 'assistant') && content ? [{ role, text: content }] : [];
   });
 }
 
@@ -311,7 +313,7 @@ export async function handleStreamingRequest(request, env, fetchImpl = fetch) {
         model: env.STREAM_MODEL, // Explicit: no silent model downgrade.
         instructions: INSTRUCTIONS + '\nPrivate journey context: ' + payload.summary,
         input: [
-          ...body.history.map(x => ({ role: x.role, content: x.content })),
+          ...body.history.map(x => ({ role: x.role, content: x.text })),
           { role: 'user', content: body.message },
         ],
         reasoning: { effort: 'low' },
