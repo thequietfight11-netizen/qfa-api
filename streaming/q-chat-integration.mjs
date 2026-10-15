@@ -53,7 +53,12 @@ export async function tryStreamQReply({
       signal,
     });
     if (signal?.aborted) return { mode: 'cancelled' };
-    if (!response.ok) return { mode: 'fallback', reason: 'Streaming unavailable' };
+    if (!response.ok) {
+      // Proxy may have contacted the billed provider already. Never auto-send
+      // a second request after a fetch has begun, even without visible tokens.
+      onInterrupted('Q could not connect just now. Please try again.');
+      return { mode: 'interrupted', text: '', reason: 'Streaming unavailable' };
+    }
 
     const ok = await readQStream(response, {
       signal,
@@ -74,14 +79,21 @@ export async function tryStreamQReply({
     if (ok && finished && partialReply.trim()) {
       return { mode: 'streamed', text: partialReply };
     }
-    // Safe fallback only if NOTHING was displayed. Never issue a second
-    // paid request after some of a personal answer has already reached the dad.
-    if (!hasStarted) return { mode: 'fallback', reason: error || 'Stream was empty' };
+    // The provider might have been billed even without any visible tokens.
+    // Never auto-issue another AI request once the streaming fetch started.
+    if (!hasStarted) {
+      onInterrupted(error || 'Q did not finish. Please try again.');
+      return { mode: 'interrupted', text: '', reason: error || 'Stream was empty' };
+    }
     onInterrupted(error || 'Q was interrupted. Please try again.');
     return { mode: 'interrupted', text: partialReply, reason: error };
   } catch {
     if (signal?.aborted) return { mode: 'cancelled' };
-    if (!hasStarted) return { mode: 'fallback', reason: 'Stream could not start' };
+    // Even a network error can arrive after the paid request was accepted.
+    if (!hasStarted) {
+      onInterrupted('Q lost the connection. Please try again.');
+      return { mode: 'interrupted', text: '', reason: 'Stream could not start' };
+    }
     onInterrupted('The connection was interrupted. Please try again.');
     return { mode: 'interrupted', text: partialReply };
   }
