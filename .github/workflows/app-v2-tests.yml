@@ -1,0 +1,24 @@
+name: QF Journey and privacy tests
+
+on:
+  push:
+    branches:
+      - feature/journey-flex-co-parent-analytics
+  pull_request:
+    paths:
+      - 'app-v2/**'
+      - '.github/workflows/app-v2-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  app-v2-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test journey, co-parent tools, analytics privacy
+        run: node --test app-v2/features.test.mjs
