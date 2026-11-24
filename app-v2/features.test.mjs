@@ -91,11 +91,12 @@ test('analytics allows only an explicit event allowlist and short batches',()=>{
 
 test('small analytics groups are suppressed from admin summaries',()=>{
  const now=Date.now();
- const a=Array.from({length:6},()=>({name:'q_open',properties:{},timestamp:now}));
- const b=Array.from({length:3},()=>({name:'journey_day_complete',properties:{day:4},timestamp:now}));
+ const a=Array.from({length:6},(_,i)=>({name:'q_open',properties:{},timestamp:now,serverSubject:'anon_'+i}));
+ const b=Array.from({length:3},(_,i)=>({name:'journey_day_complete',properties:{day:4},timestamp:now,serverSubject:'anon_'+i}));
  const rows=aggregateProductAnalytics([...a,...b]);
  assert.equal(rows.length,1);
  assert.equal(rows[0].event,'q_open');
  assert.equal(rows[0].count,6);
+ assert.equal(aggregateProductAnalytics(Array.from({length:10},()=>({name:'q_open',properties:{},serverSubject:'same_dad'}))).length,0);
  assert.throws(()=>aggregateProductAnalytics(a,{minimumGroupSize:1}),/threshold/);
 });
