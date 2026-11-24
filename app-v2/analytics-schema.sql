@@ -21,6 +21,6 @@ CREATE INDEX IF NOT EXISTS idx_analytics_event_day ON analytics_events(event_day
 CREATE INDEX IF NOT EXISTS idx_analytics_subject ON analytics_events(subject_key,occurred_at);
 
 -- Enforce deletion after 90 days through a scheduled task:
--- DELETE FROM analytics_events WHERE occurred_at < datetime('now','-90 days');
+-- DELETE FROM analytics_events WHERE datetime(occurred_at) < datetime('now','-90 days');
 -- A user's consent withdrawal or account deletion must DELETE their events.
 -- No analytics event storage while consent=0.
