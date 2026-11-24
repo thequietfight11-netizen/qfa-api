@@ -84,14 +84,20 @@ export function aggregateProductAnalytics(records,{minimumGroupSize=5}={}) {
  const counts=new Map();
  for(const r of records){
    if(!r||!Object.hasOwn(ANALYTICS_EVENTS,r.name))continue;
+   // Only the authenticated server inserts a rotating pseudonymous subject.
+   // A client-provided subject must NEVER be accepted.
+   if(typeof r.serverSubject!=='string'||!r.serverSubject)continue;
    const category=r.name;
    const day=r.name.startsWith('journey_')?r.properties?.day:null;
    const key=category+'|'+(day||'all');
-   counts.set(key,(counts.get(key)||0)+1);
+   const entry=counts.get(key)||{count:0,subjects:new Set()};
+   entry.count++;
+   entry.subjects.add(r.serverSubject);
+   counts.set(key,entry);
  }
- // Applied when count-level reporting risks isolating a tiny subgroup.
- return [...counts].filter(([,count])=>count>=minimumGroupSize)
-   .map(([key,count])=>{const [event,day]=key.split('|');return {event,day:day==='all'?null:Number(day),count};});
+ // At least five DISTINCT people, never merely five clicks from one person.
+ return [...counts].filter(([,entry])=>entry.subjects.size>=minimumGroupSize)
+   .map(([key,entry])=>{const [event,day]=key.split('|');return {event,day:day==='all'?null:Number(day),count:entry.count};});
 }
 
 export function safeAnalyticsExport(rows) {
