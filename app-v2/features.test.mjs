@@ -5,6 +5,7 @@ import {
  completeJourneyDay,recordOptionalActivity,journeyOverview,nextStepChoices
 } from './journey.mjs';
 import {buildCalmReply,CO_PARENTING_TOOLS,HANDOVER_PREP,WHEN_CONTACT_IS_LIMITED} from './co-parenting.mjs';
+import {buildFounderReport} from './report.mjs';
 import {prepareAnalyticsBatch,validateAnalyticsEvent,aggregateProductAnalytics,ANALYTICS_EVENTS,ANALYTICS_RETENTION_DAYS} from './analytics.mjs';
 
 test('100-day journey allows completing multiple days in one calendar day',()=>{
@@ -99,4 +100,33 @@ test('small analytics groups are suppressed from admin summaries',()=>{
  assert.equal(rows[0].count,6);
  assert.equal(aggregateProductAnalytics(Array.from({length:10},()=>({name:'q_open',properties:{},serverSubject:'same_dad'}))).length,0);
  assert.throws(()=>aggregateProductAnalytics(a,{minimumGroupSize:1}),/threshold/);
+});
+
+test('founder report counts distinct people and same-day multiple journey days',()=>{
+ const now=Date.now();
+ const rows=[];
+ for(let i=0;i<6;i++){
+   const subject='user_'+i;
+   rows.push({name:'app_open',serverSubject:subject,timestamp:now,properties:{}});
+   rows.push({name:'journey_day_open',serverSubject:subject,timestamp:now,properties:{day:1}});
+   rows.push({name:'journey_day_complete',serverSubject:subject,timestamp:now,properties:{day:1}});
+   rows.push({name:'journey_day_complete',serverSubject:subject,timestamp:now+1000,properties:{day:2}});
+   rows.push({name:'q_reply_finished',serverSubject:subject,timestamp:now,properties:{outcome:'success',latency_band:'2_to_5s'}});
+ }
+ const r=buildFounderReport(rows,{from:now-1000,to:now+3000});
+ assert.equal(r.metrics.activeUsers,6);
+ assert.equal(r.metrics.multiDayUsers,6);
+ assert.equal(r.metrics.firstDayCompletionPct,100);
+ assert.equal(r.metrics.qReplySuccessPct,100);
+ assert.equal(r.breakdowns.journeyDayFinishes.find(x=>x.name==='2').users,6);
+ assert.equal(JSON.stringify(r).includes('user_'),false);
+});
+
+test('founder report suppresses one-person clickstorms and sensitive small groups',()=>{
+ const now=Date.now();
+ const rows=Array.from({length:200},()=>({name:'coparenting_tool_open',serverSubject:'only_one',timestamp:now,properties:{tool:'pause'}}));
+ const r=buildFounderReport(rows,{from:now-1000,to:now+1000});
+ assert.equal(r.metrics.activeUsers,null);
+ assert.deepEqual(r.breakdowns.coParentTools,[]);
+ assert.throws(()=>buildFounderReport(rows,{minSubjects:1}),/five people/);
 });
